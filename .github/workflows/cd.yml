@@ -1,0 +1,129 @@
+name: CD - Build & Push Docker Images
+
+on:
+  push:
+    tags: ['v*']
+  release:
+    types: [published]
+
+# 只允许一个 CD 运行，避免重复推送
+concurrency:
+  group: cd-${{ github.ref_name }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+env:
+  DOCKER_REGISTRY: docker.io
+  IMAGE_BACKEND: ${{ secrets.DOCKER_USERNAME }}/mp-editor-backend
+  IMAGE_FRONTEND: ${{ secrets.DOCKER_USERNAME }}/mp-editor-frontend
+
+jobs:
+  # ========== 构建并推送镜像 ==========
+  build-and-push:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker QEMU (multi-arch support)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # ========== 后端镜像 ==========
+      - name: Extract metadata (tags & labels) for Backend
+        id: meta-backend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_BACKEND }}
+          tags: |
+            type=ref,event=tag
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ========== 前端镜像 ==========
+      - name: Extract metadata (tags & labels) for Frontend
+        id: meta-frontend
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_FRONTEND }}
+          tags: |
+            type=ref,event=tag
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: frontend/Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+          build-args: |
+            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL || '/api' }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ========== 部署到生产环境（可选，需要自行配置服务器）==========
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+    # 取消注释以下配置以启用自动部署
+    # env:
+    #   DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    #   DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+    #   DEPLOY_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+
+    steps:
+      - name: Deploy via SSH (placeholder)
+        run: |
+          echo "🚀 CD Deploy step - configure in project settings"
+          echo "Required secrets:"
+          echo "  - DEPLOY_HOST: production server IP/hostname"
+          echo "  - DEPLOY_USER: SSH username"
+          echo "  - DEPLOY_SSH_KEY: SSH private key"
+          echo ""
+          echo "Uncomment the deploy job in .github/workflows/cd.yml to enable auto-deploy"
+        # - name: SSH deploy (example)
+        #   uses: appleboy/ssh-action@v1.0.0
+        #   with:
+        #     host: ${{ secrets.DEPLOY_HOST }}
+        #     username: ${{ secrets.DEPLOY_USER }}
+        #     key: ${{ secrets.DEPLOY_SSH_KEY }}
+        #     script: |
+        #       cd /opt/mp-editor
+        #       docker compose pull
+        #       docker compose up -d
+        #       docker compose ps
