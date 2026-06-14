@@ -1,3 +1,4 @@
+# ── 前端 ──
 # Logs
 logs
 *.log
@@ -22,3 +23,35 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# ── 后端 ──
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+.eggs/
+
+# 虚拟环境
+venv/
+.venv/
+env/
+
+# 环境变量
+.env
+.env.local
+.env.production
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# 数据库
+*.db
+*.sqlite3
+
+# Alembic
+alembic/versions/__pycache__/
